@@ -63,7 +63,7 @@ type Context struct {
 	skippedNodes *[]skippedNode
 
 	// This mutex protects Keys map.
-	mu sync.RWMutex
+	Mu sync.RWMutex
 
 	// Keys is a key/value pair exclusively for the context of each request.
 	Keys map[string]any
@@ -121,9 +121,10 @@ func (c *Context) Copy() *Context {
 	cp.index = abortIndex
 	cp.handlers = nil
 	cp.Keys = map[string]any{}
-	for k, v := range c.Keys {
+	c.Range(func(k string, v any) bool {
 		cp.Keys[k] = v
-	}
+		return true
+	})
 	paramCopy := make([]Param, len(cp.Params))
 	copy(paramCopy, cp.Params)
 	cp.Params = paramCopy
@@ -247,8 +248,8 @@ func (c *Context) Error(err error) *Error {
 // Set is used to store a new key/value pair exclusively for this context.
 // It also lazy initializes  c.Keys if it was not used previously.
 func (c *Context) Set(key string, value any) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.Mu.Lock()
+	defer c.Mu.Unlock()
 	if c.Keys == nil {
 		c.Keys = make(map[string]any)
 	}
@@ -259,10 +260,22 @@ func (c *Context) Set(key string, value any) {
 // Get returns the value for the given key, ie: (value, true).
 // If the value does not exist it returns (nil, false)
 func (c *Context) Get(key string) (value any, exists bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.Mu.RLock()
+	defer c.Mu.RUnlock()
 	value, exists = c.Keys[key]
 	return
+}
+
+// Range is used to iterate Keys safety.
+// If f returns false, it will break iteration.
+func (c *Context) Range(f func(k string, v any) bool) {
+	c.Mu.RLock()
+	defer c.Mu.RUnlock()
+	for k, v := range c.Keys {
+		if !f(k, v) {
+			break
+		}
+	}
 }
 
 // MustGet returns the value for the given key if it exists, otherwise it panics.
